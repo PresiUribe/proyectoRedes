@@ -1,0 +1,111 @@
+const mysql = require('mysql2/promise');
+
+// Crear un pool de conexiones a la base de datos reservasMS
+const pool = mysql.createPool({
+    host: 'localhost',
+    user: 'root',
+    password: 'mysql',
+    database: 'reservasMS'
+});
+
+
+
+
+async function actualizarEstadoReserva(propId, estado) {
+  const [result] = await pool.query(
+    'UPDATE reservas SET estado = ? WHERE propiedad_id = ?',
+    [estado, propId]
+  );
+  return result;
+}
+
+
+
+// Crear una nueva reserva
+async function crearReserva(usuario_id, propiedad_id, fecha_reserva, estado) {
+    const [result] = await pool.query(
+      'INSERT INTO reservas (usuario_id, propiedad_id, fecha_reserva, estado) VALUES (?, ?, ?, ?)',
+      [usuario_id, propiedad_id, fecha_reserva, estado]
+    );
+    return result;
+}
+
+// Cancelar una reserva (actualiza estado a "cancelada")
+async function cancelarReserva(id) {
+    const [result] = await pool.query(
+        'UPDATE reservas SET estado = ? WHERE id = ?',
+        ['cancelada', id]
+    );
+    return result;
+}
+
+// Modificar una reserva (para acciones de administrador)
+async function modificarReserva(id, fecha_reserva, estado) {
+    const [result] = await pool.query(
+        'UPDATE reservas SET fecha_reserva = ?, estado = ? WHERE id = ?',
+        [fecha_reserva, estado, id]
+    );
+    return result;
+}
+
+// Verificar disponibilidad de una propiedad en una fecha (excluyendo reservas canceladas)
+async function verificarDisponibilidad(propiedad_id, fecha_reserva) {
+    const [rows] = await pool.query(
+      'SELECT * FROM reservas WHERE propiedad_id = ? AND fecha_reserva = ? AND estado != ?',
+      [propiedad_id, fecha_reserva, 'cancelada']
+    );
+    return rows;
+}
+
+// Obtener una reserva por su ID
+async function obtenerReserva(id) {
+    const [rows] = await pool.query('SELECT * FROM reservas WHERE id = ?', [id]);
+    return rows;
+}
+
+async function obtenerReservasPorPropiedad(propiedadId) {
+  const [rows] = await pool.query('SELECT * FROM reservas WHERE propiedad_id = ?', [propiedadId]);
+  return rows;
+}
+
+
+async function actualizarReserva(id, estado) {
+  const [result] = await pool.query(
+    'UPDATE reservas SET estado = ? WHERE id = ?',
+    [estado, id]
+  );
+  return result;
+}
+
+
+async function obtenerEstadoReservaPorPropiedad(propId) {
+  const [rows] = await pool.query(
+    'SELECT estado FROM reservas WHERE propiedad_id = ? LIMIT 1',
+    [propId]
+  );
+  return rows.length > 0 ? rows[0] : null;
+}
+
+// Actualiza el estado de la reserva para una propiedad
+async function actualizarEstadoReservaPorPropiedad(propId, estado) {
+  const [result] = await pool.query(
+    'UPDATE reservas SET estado = ? WHERE propiedad_id = ?',
+    [estado, propId]
+  );
+  return result;
+}
+
+
+
+module.exports = {
+    crearReserva,
+    cancelarReserva,
+    modificarReserva,
+    verificarDisponibilidad,
+    obtenerReserva,
+    obtenerReservasPorPropiedad,
+    actualizarReserva,
+    actualizarEstadoReserva,
+    obtenerEstadoReservaPorPropiedad,
+  actualizarEstadoReservaPorPropiedad
+};

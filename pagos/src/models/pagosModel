@@ -1,0 +1,63 @@
+const mysql = require('mysql2/promise');
+
+// Conexión al pool de MySQL (base de datos pagosMS)
+const pool = mysql.createPool({
+    host: 'localhost',
+    user: 'root',
+    password: 'mysql',
+    database: 'pagosMS' // Ajusta el nombre de la base de datos si es necesario
+});
+
+// Función para crear un nuevo pago
+async function crearPago(reserva_id, metodo_pago, monto, estado) {
+    const [result] = await pool.query(
+        'INSERT INTO pagos (reserva_id, metodo_pago, monto, estado) VALUES (?, ?, ?, ?)',
+        [reserva_id, metodo_pago, monto, estado]
+    );
+    return result; // result.insertId contendrá el id del nuevo pago
+}
+
+// Función para obtener un pago por su ID
+async function obtenerPago(id) {
+    const [rows] = await pool.query('SELECT * FROM pagos WHERE id = ?', [id]);
+    return rows;
+}
+
+// Función para actualizar el estado de un pago
+async function actualizarEstadoPago(id, nuevoEstado) {
+    const [result] = await pool.query(
+        'UPDATE pagos SET estado = ? WHERE id = ?',
+        [nuevoEstado, id]
+    );
+    return result;
+}
+
+// pagosModel.js
+async function obtenerPagosPendientes() {
+  const [rows] = await pool.query(
+    'SELECT * FROM pagos WHERE estado = ?',
+    ['pendiente']
+  );
+  return rows;
+}
+
+// pagosModel.js
+async function aceptarPago(paymentId) {
+  // Forzamos que el estado se actualice a 'aprobado'
+  const estado = 'aprobado';
+  const [result] = await pool.query(
+    'UPDATE pagos SET estado = ? WHERE id = ?',
+    [estado, paymentId]
+  );
+  return result;
+}
+
+
+
+module.exports = {
+    crearPago,
+    obtenerPago,
+    actualizarEstadoPago,
+    obtenerPagosPendientes,
+    aceptarPago
+};

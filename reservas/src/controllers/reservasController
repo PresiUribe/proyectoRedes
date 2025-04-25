@@ -1,0 +1,168 @@
+const { Router } = require('express');
+const axios = require('axios');
+const router = Router();
+const reservasModel = require('../models/reservasModels');
+
+
+
+
+// Esta ruta se debe declarar ANTES de la ruta genérica
+router.get('/reservas/estado/:propId', async (req, res) => {
+  const propId = req.params.propId;
+  try {
+    const estadoReserva = await reservasModel.obtenerEstadoReservaPorPropiedad(propId);
+    if (estadoReserva) {
+      res.json(estadoReserva);
+    } else {
+      res.status(404).send("Reserva no encontrada");
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al obtener el estado de la reserva");
+  }
+});
+
+// Endpoint para actualizar el estado de la reserva para una propiedad
+router.put('/reservas/estado/:propId', async (req, res) => {
+  const propId = req.params.propId;
+  const { estado } = req.body; // Se espera que "estado" sea "disponible", "pendiente" o "no disponible"
+  try {
+    const result = await reservasModel.actualizarEstadoReservaPorPropiedad(propId, estado);
+    if (result.affectedRows > 0) {
+      res.json({ message: "Reserva actualizada a " + estado });
+    } else {
+      res.status(404).send("Reserva no encontrada");
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al actualizar la reserva");
+  }
+});
+
+
+/**
+ * POST /reservas
+ * Crear una nueva reserva.
+ * Se espera recibir en el body:
+ * {
+ *   "usuario_id": 1,
+ *   "propiedad_id": 10,
+ *   "fecha_reserva": "2025-04-01",
+ *   "estado": "pendiente"
+ * }
+ * 
+ * Flujo:
+ * 1. Se consulta al microservicio de Usuarios para validar que el usuario exista y sea "huésped".
+ * 2. Si la validación es correcta, se crea la reserva.
+ */
+router.post('/reservas', async (req, res) => {
+    try {
+        const { usuario_id, propiedad_id, fecha_reserva, estado } = req.body;
+
+        // 1. Validar usuario mediante llamada REST al microservicio de Usuarios
+        const usuarioResponse = await axios.get(`http://192.168.100.2:3001/usuarios/${usuario_id}`);
+        const usuario = usuarioResponse.data;
+        if (!usuario || usuario.tipo !== 'huesped') {
+            return res.status(400).json({ message: "Usuario inválido o no es un huésped" });
+        }
+
+        // 2. Crear la reserva en la base de datos
+        const result = await reservasModel.crearReserva(usuario_id, propiedad_id, fecha_reserva, estado);
+        res.status(201).json({
+            message: "Reserva creada",
+            reserva_id: result.insertId
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al crear la reserva");
+    }
+});
+
+/**
+ * PUT /reservas/:id/cancelar
+ * Cancelar una reserva (cambia el estado a "cancelada")
+ */
+router.put('/reservas/:id/cancelar', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await reservasModel.cancelarReserva(id);
+        res.send("Reserva cancelada");
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al cancelar la reserva");
+    }
+});
+
+/**
+ * GET /reservas/disponibilidad?propiedad_id=XX&fecha_reserva=YYYY-MM-DD
+ * Verificar si una propiedad está disponible en la fecha indicada.
+ */
+router.get('/reservas/disponibilidad', async (req, res) => {
+    try {
+        const { propiedad_id, fecha_reserva } = req.query;
+        if (!propiedad_id || !fecha_reserva) {
+            return res.status(400).send("Faltan parámetros (propiedad_id, fecha_reserva)");
+        }
+        const reservasOcupadas = await reservasModel.verificarDisponibilidad(propiedad_id, fecha_reserva);
+        const disponible = reservasOcupadas.length === 0;
+        res.json({ disponible });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al verificar disponibilidad");
+    }
+});
+
+/**
+ * PUT /reservas/:id
+ * Modificar una reserva (acción de administrador)
+ * Se espera recibir en el body:
+ * {
+ *   "fecha_reserva": "2025-04-10",
+ *   "estado": "aprobada"
+ * }
+ */
+
+// PUT /reservas/:id
+
+router.put('/reservas/:id', async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  try {
+    const result = await reservasModel.actualizarReserva(id, estado);
+    if (result.affectedRows > 0) {
+      res.json({ message: "Reserva actualizada a " + estado });
+    } else {
+      res.status(404).send("Reserva no encontrada");
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al actualizar la reserva");
+  }
+});
+
+
+/**
+ * GET /reservas/:id
+ * Obtener detalles de una reserva por su ID
+ */
+router.get('/reservas/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const reserva = await reservasModel.obtenerReserva(id);
+        if (reserva.length > 0) {
+            res.json(reserva[0]);
+        } else {
+            res.status(404).send("Reserva no encontrada");
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al obtener la reserva");
+    }
+});
+
+
+// Obtener el estado de la reserva para una propie
+
+
+
+module.exports = router;

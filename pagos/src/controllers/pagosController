@@ -1,0 +1,171 @@
+const { Router } = require('express');
+const axios = require('axios'); // Librería para hacer peticiones HTTP REST
+const router = Router();
+const pagosModel = require('../models/pagosModel');
+
+
+
+// pagosController.js
+router.get('/pagos/pending', async (req, res) => {
+  try {
+    const pagosPendientes = await pagosModel.obtenerPagosPendientes();
+    res.json(pagosPendientes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al obtener pagos pendientes");
+  }
+});
+
+
+
+/**
+ * POST /pagos
+ * Procesar un nuevo pago.
+ * Se espera recibir en el body:
+ * {
+ *   "reserva_id": 123,
+ *   "monto": 200.00,
+ *   "estado": "pendiente"
+ * }
+ * 
+ * Flujo:
+ * 1. Se consulta al microservicio de Reservas para obtener la reserva (y de ahí el usuario_id).
+ * 2. Se consulta al microservicio de Usuarios para obtener el método de pago del usuario.
+ * 3. Se crea el pago usando la información recopilada.
+ */
+
+router.post('/pagos', async (req, res) => {
+    try {
+        const { reserva_id, monto, estado } = req.body;
+
+        // 1. Consultar la reserva en el microservicio de Reservas
+        const reservaResponse = await axios.get(`http://192.168.100.2:3004/reservas/${reserva_id}`);
+        const reserva = reservaResponse.data;
+        if (!reserva) {
+            return res.status(404).json({ message: "Reserva no encontrada" });
+        }
+
+        // Se espera que la reserva contenga 'usuario_id'
+        const usuario_id = reserva.usuario_id;
+        if (!usuario_id) {
+            return res.status(400).json({ message: "La reserva no contiene información de usuario" });
+        }
+
+        // 2. Consultar la información del usuario en el microservicio de Usuarios
+        const usuarioResponse = await axios.get(`http://192.168.100.2:3001/usuarios/${usuario_id}`);
+        const usuario = usuarioResponse.data;
+        if (!usuario) {
+            return res.status(404).json({ message: "Usuario no encontrado" });
+        }
+
+        // Extraer el método de pago del usuario (por ejemplo, 'tipo_tarjeta')
+        const metodo_pago = usuario.tipo_tarjeta;
+
+        // 3. Crear el pago en la base de datos de Pagos
+        const result = await pagosModel.crearPago(reserva_id, metodo_pago, monto, estado);
+
+        // 4. Actualizar el estado de la reserva a "pendiente"
+        await axios.put(`http://192.168.100.2:3004/reservas/${reserva_id}`, { estado: 'pendiente' });
+
+        res.status(201).json({
+            message: "Pago procesado y reserva actualizada a pendiente",
+            pago_id: result.insertId
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al procesar el pago");
+    }
+});
+
+
+/**
+ * GET /pagos/:id
+ * Obtener detalles de un pago.
+ */
+router.get('/pagos/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pago = await pagosModel.obtenerPago(id);
+        if (pago.length > 0) {
+            res.json(pago[0]);
+        } else {
+            res.status(404).send("Pago no encontrado");
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al obtener el pago");
+    }
+});
+
+/**
+ * GET /pagos/recibo/:id
+ * Generar un recibo de pago (retorna un JSON con la información del pago y la fecha actual).
+ */
+router.get('/pagos/recibo/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        const pago = await pagosModel.obtenerPago(id);
+        if (pago.length > 0) {
+            const data = pago[0];
+            const recibo = {
+                mensaje: "Recibo de pago",
+                pago_id: data.id,
+                reserva_id: data.reserva_id,
+                metodo_pago: data.metodo_pago,
+                monto: data.monto,
+                estado: data.estado,
+                fecha: new Date().toISOString()
+            };
+            res.json(recibo);
+        } else {
+            res.status(404).send("Pago no encontrado");
+        }
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al generar el recibo");
+    }
+});
+
+/**
+ * PUT /pagos/:id
+ * Actualizar el estado de un pago.
+ * Body esperado:
+ * {
+ *   "estado": "aprobado"
+ * }
+ */
+router.put('/pagos/:id', async (req, res) => {
+    const { id } = req.params;
+    const { estado } = req.body;
+    try {
+        await pagosModel.actualizarEstadoPago(id, estado);
+        res.send("Estado de pago actualizado");
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Error al actualizar el estado del pago");
+    }
+});
+
+
+
+
+
+// pagosController.js
+router.put('/pagos/aceptar/:paymentId', async (req, res) => {
+  const paymentId = req.params.paymentId;
+  try {
+    const result = await pagosModel.aceptarPago(paymentId);
+    if (result.affectedRows > 0) {
+      res.json({ message: "Pago actualizado a aprobado" });
+    } else {
+      res.status(404).send("Pago no encontrado");
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al actualizar el pago");
+  }
+});
+
+
+
+module.exports = router;

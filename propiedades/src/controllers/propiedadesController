@@ -1,0 +1,68 @@
+const { Router } = require('express');
+const router = Router();
+const propiedadesModel = require('../models/propiedadesModel');
+
+// Obtener todas las propiedades con filtros opcionales
+router.get('/propiedades', async (req, res) => {
+    // Se pueden enviar filtros: ciudad, cuartos, precio_min, precio_max
+    const filtros = {
+        ciudad: req.query.ciudad,
+        cuartos: req.query.cuartos,
+        precio_min: req.query.precio_min,
+        precio_max: req.query.precio_max
+    };
+    const propiedades = await propiedadesModel.traerPropiedades(filtros);
+    res.json(propiedades);
+});
+
+// Obtener una propiedad por ID
+router.get('/propiedades/:id', async (req, res) => {
+    const id = req.params.id;
+    const propiedad = await propiedadesModel.traerPropiedad(id);
+    res.json(propiedad[0]);
+});
+
+// Crear una nueva propiedad
+router.post('/propiedades', async (req, res) => {
+    const { titulo, descripcion, ciudad, precio, numero_cuartos } = req.body;
+    await propiedadesModel.crearPropiedad(titulo, descripcion, ciudad, precio, numero_cuartos);
+    res.send("Propiedad creada");
+});
+
+// Actualizar una propiedad existente (acción para ADMIN)
+router.put('/propiedades/:id', async (req, res) => {
+    const id = req.params.id;
+    const { titulo, descripcion, ciudad, precio, numero_cuartos } = req.body;
+    await propiedadesModel.actualizarPropiedad(id, titulo, descripcion, ciudad, precio, numero_cuartos);
+    res.send("Propiedad actualizada");
+});
+
+// Eliminar una propiedad (acción para ADMIN)
+router.delete('/propiedades/:id', async (req, res) => {
+    const id = req.params.id;
+    await propiedadesModel.borrarPropiedad(id);
+    res.send("Propiedad eliminada");
+});
+
+
+// En propiedadesController.js
+router.put('/propiedades/:id/disponibilidad', async (req, res) => {
+  const id = req.params.id;
+  // Se espera recibir en el body algo como { disponible: true } o { disponible: false }
+  const { disponible } = req.body;
+  try {
+    const result = await propiedadesModel.actualizarDisponibilidad(id, disponible);
+    if (result.affectedRows > 0) {
+      res.json({ message: "Disponibilidad actualizada" });
+    } else {
+      res.status(404).send("Propiedad no encontrada");
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al actualizar la disponibilidad");
+  }
+});
+
+
+
+module.exports = router;

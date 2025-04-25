@@ -1,0 +1,56 @@
+const mysql = require('mysql2/promise');
+
+// Configuración de la conexión a la base de datos
+const connection = mysql.createPool({
+    host: 'localhost',
+    user: 'root',
+    password: 'mysql',
+    database: 'usuariosMS' // Ajusta el nombre de la base de datos si es necesario
+});
+
+// Obtener la información de un usuario por ID
+async function traerUsuario(id) {
+    const [rows] = await connection.query('SELECT * FROM usuarios WHERE id = ?', [id]);
+    return rows;
+}
+
+// Validar credenciales de usuario (login)
+async function validarCredenciales(usuario, password) {
+    const result = await connection.query("SELECT * FROM usuarios WHERE usuario=? AND password=?",
+        [usuario, password]
+    );
+    return result[0];
+}
+
+// Actualizar la información de un usuario existente
+async function actualizarUsuario(id, data) {
+    const { nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion } = data;
+    const [result] = await connection.query(
+        'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, password = ?, tipo = ?, tipo_tarjeta = ?, numero_tarjeta = ?, cvc = ?, fecha_expiracion = ? WHERE id = ?',
+        [nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion, id]
+    );
+    return result;
+}
+
+// Crear un nuevo usuario
+async function crearUsuario(nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion) {
+    const [result] = await connection.query(
+        'INSERT INTO usuarios VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion]
+    );
+    return result;
+}
+
+// Eliminar un usuario por ID
+async function borrarUsuario(id) {
+    const [result] = await connection.query('DELETE FROM usuarios WHERE id = ?', [id]);
+    return result;
+}
+
+module.exports = {
+    traerUsuario,
+    validarCredenciales,
+    actualizarUsuario,
+    crearUsuario,
+    borrarUsuario
+};

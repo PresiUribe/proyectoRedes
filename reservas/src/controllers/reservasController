@@ -50,7 +50,7 @@ router.put('/reservas/estado/:propId', async (req, res) => {
  *   "fecha_reserva": "2025-04-01",
  *   "estado": "pendiente"
  * }
- * 
+ *
  * Flujo:
  * 1. Se consulta al microservicio de Usuarios para validar que el usuario exista y sea "huésped".
  * 2. Si la validación es correcta, se crea la reserva.

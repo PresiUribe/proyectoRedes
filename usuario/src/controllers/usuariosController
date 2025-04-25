@@ -9,7 +9,7 @@ router.get('/usuarios/:id', async (req, res) => {
     res.json(result[0]);
 });
 
-router.get('/usuarios/login/:usuario/:password', async (req, res) => { 
+router.get('/usuarios/login/:usuario/:password', async (req, res) => {
     const usuario = req.params.usuario;
     const password = req.params.password;
     const result = await usuariosModel.validarCredenciales(usuario, password);

@@ -27,7 +27,7 @@ router.get('/pagos/pending', async (req, res) => {
  *   "monto": 200.00,
  *   "estado": "pendiente"
  * }
- * 
+ *
  * Flujo:
  * 1. Se consulta al microservicio de Reservas para obtener la reserva (y de ahí el usuario_id).
  * 2. Se consulta al microservicio de Usuarios para obtener el método de pago del usuario.

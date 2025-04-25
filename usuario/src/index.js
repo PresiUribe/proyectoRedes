@@ -13,4 +13,3 @@ app.use(usuariosController);
 app.listen(3001, () => {
 	  console.log("Servidor de Usuarios corriendo en el puerto 3001");
 });
-

@@ -13,4 +13,3 @@ app.use(propiedadesController);
 app.listen(3002, () => {
 	  console.log("Servidor de Propiedades corriendo en el puerto 3002");
 });
-

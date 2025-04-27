@@ -74,9 +74,13 @@ router.post(
 
 // Eliminar un usuario por ID
 router.delete('/usuarios/:id', async (req, res) => {
-    const id = req.params.id;
-    await usuariosModel.borrarUsuario(id);
-    res.send("Usuario borrado");
+  try {
+    await usuariosModel.borrarUsuario(req.params.id);
+    res.json({ message: 'Usuario borrado' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error al borrar usuario');
+  }
 });
 
 module.exports = router;

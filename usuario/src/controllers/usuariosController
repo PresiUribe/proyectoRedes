@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const router = Router();
 const usuariosModel = require('../models/usuariosModel');
-const { body, validationResult } = require('express-validator');
+
 // Obtener la información de un usuario por ID
 router.get('/usuarios/:id', async (req, res) => {
     const id = req.params.id;
@@ -9,16 +9,18 @@ router.get('/usuarios/:id', async (req, res) => {
     res.json(result[0]);
 });
 
-router.get('/usuarios/login/:usuario/:password', async (req, res) => {
-    const usuario = req.params.usuario;
-    const password = req.params.password;
+// Validar credenciales de usuario (login)
+// Se espera recibir "usuario" y "password" vía query params, por ejemplo:
+// /usuarios/login?usuario=xxx&password=yyy
+router.get('/usuarios/login', async (req, res) => {
+    const { usuario, password } = req.query;
     const result = await usuariosModel.validarCredenciales(usuario, password);
     if (result && result.length > 0) {
-      res.json(result[0]);
+        res.json(result[0]);
     } else {
-      res.status(401).send("Credenciales inválidas");
+        res.status(401).send("Credenciales inválidas");
     }
-  });
+});
 
 // Actualizar un usuario existente
 // Se actualizan todos los campos: nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc y fecha_expiracion
@@ -31,56 +33,17 @@ router.put('/usuarios/:id', async (req, res) => {
 
 // Crear un nuevo usuario
 // Se espera recibir: nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc y fecha_expiracion en el body
-router.post(
-  '/usuarios',
-  [
-    body('nombre').notEmpty().withMessage('El nombre es obligatorio'),
-    body('email').isEmail().withMessage('El email no es válido'),
-    body('usuario').notEmpty().withMessage('El usuario es obligatorio'),
-    body('password').isLength({ min: 4 }).withMessage('La contraseña debe tener al menos 4 caracteres'),
-    body('tipo').isIn(['huesped', 'admin']).withMessage('El tipo debe ser huesped o admin'),
-    body('tipo_tarjeta').isIn(['debito', 'credito']).withMessage('El medio de pago debe ser debito o credito'),
-    body('numero_tarjeta').isLength({ min: 16, max: 16 }).withMessage('El número de tarjeta debe tener 16 dígitos'),
-    body('cvc').isLength({ min: 3, max: 3 }).withMessage('El CVC debe tener 3 dígitos'),
-    body('fecha_expiracion').matches(/^\d{4}$/).withMessage('La fecha de expiración debe tener 4 dígitos (MMYY)')
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      // Devuelve un 400 con el listado de errores
-      return res.status(400).json({ errors: errors.array() });
-    }
-    // Aquí iría la lógica para crear el usuario en la base de datos
-    try {
-      await usuariosModel.crearUsuario(
-        req.body.nombre,
-        req.body.email,
-        req.body.usuario,
-        req.body.password,
-        req.body.tipo,
-        req.body.tipo_tarjeta,
-        req.body.numero_tarjeta,
-        req.body.cvc,
-        req.body.fecha_expiracion
-      );
-      res.json({ message: "Usuario creado exitosamente" });
-    } catch (err) {
-      console.error(err);
-      res.status(500).send("Error al crear el usuario");
-    }
-  }
-);
-
+router.post('/usuarios', async (req, res) => {
+    const { nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion } = req.body;
+    await usuariosModel.crearUsuario(nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion);
+    res.send("Usuario creado");
+});
 
 // Eliminar un usuario por ID
 router.delete('/usuarios/:id', async (req, res) => {
-  try {
-    await usuariosModel.borrarUsuario(req.params.id);
-    res.json({ message: 'Usuario borrado' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).send('Error al borrar usuario');
-  }
+    const id = req.params.id;
+    await usuariosModel.borrarUsuario(id);
+    res.send("Usuario borrado");
 });
 
 module.exports = router;

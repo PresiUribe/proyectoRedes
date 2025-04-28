@@ -2,11 +2,11 @@ const mysql = require('mysql2/promise');
 
 // Configuración de la conexión a la base de datos
 const connection = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: 'mysql',
-    database: 'usuariosMS' // Ajusta el nombre de la base de datos si es necesario
-});
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'mysql',
+    database: process.env.DB_NAME || 'usuariosMS'
+  });
 
 // Obtener la información de un usuario por ID
 async function traerUsuario(id) {
@@ -16,10 +16,11 @@ async function traerUsuario(id) {
 
 // Validar credenciales de usuario (login)
 async function validarCredenciales(usuario, password) {
-    const result = await connection.query("SELECT * FROM usuarios WHERE usuario=? AND password=?",
+    const [rows] = await connection.query(
+        'SELECT * FROM usuarios WHERE usuario = ? AND password = ?',
         [usuario, password]
     );
-    return result[0];
+    return rows;
 }
 
 // Actualizar la información de un usuario existente

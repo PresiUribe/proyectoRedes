@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'usuario_ms'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['usuario_ms:3000']
+
+  - job_name: 'haproxy'
+    metrics_path: '/stats;csv'
+    static_configs:
+      - targets: ['haproxy:8404']   # <<< ahora en 8404

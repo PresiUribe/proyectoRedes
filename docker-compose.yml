@@ -1,58 +1,66 @@
-version: '3.8'
-
-defaults: &defaults
-  restart: unless-stopped
-  environment:
-    - DB_HOST=db
-    - DB_USER=root
-    - DB_PASSWORD=mysql
-    - DB_NAME=usuariosMS
-  networks:
-    - backend
-
 services:
   db:
     image: mysql:8.0
-    container_name: db
+    restart: unless-stopped
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       MYSQL_ROOT_PASSWORD: mysql
-    <<: *defaults
+    networks:
+      - backend
 
-  usuario_ms_1:
+  usuario_ms:
     build: ./usuario
-    container_name: usuario_ms_1
-    ports:
-      - "3001:3000"
-    <<: *defaults
-
-  usuario_ms_2:
-    build: ./usuario
-    container_name: usuario_ms_2
-    ports:
-      - "3002:3000"
-    <<: *defaults
-
-  usuario_ms_3:
-    build: ./usuario
-    container_name: usuario_ms_3
-    ports:
-      - "3003:3000"
-    <<: *defaults
+    image: usuario_ms:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: mysql
+      DB_NAME: usuariosMS
+    networks:
+      - backend
 
   haproxy:
     image: haproxy:2.6-alpine
-    container_name: haproxy
-    ports:
-      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - usuario_ms
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "80:80"      # frontend HTTP
+      - "8404:8404"  # stats CSV
+    networks:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: proyecto_prometheus
+    restart: unless-stopped
     depends_on:
-      - usuario_ms_1
-      - usuario_ms_2
-      - usuario_ms_3
+      - haproxy
+      - usuario_ms
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - backend
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: proyecto_grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "3003:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
     networks:
       - backend
 
@@ -62,3 +70,4 @@ networks:
 
 volumes:
   db_data:
+    driver: local

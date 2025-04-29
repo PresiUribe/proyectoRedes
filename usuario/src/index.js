@@ -1,4 +1,3 @@
-// src/index.js
 const express = require('express');
 const promClient = require('prom-client');
 const usuariosRouter = require('./controllers/usuariosController');
@@ -6,26 +5,40 @@ const usuariosRouter = require('./controllers/usuariosController');
 const app = express();
 const register = new promClient.Registry();
 
-// Middlewares
+// Métricas por defecto del proceso (CPU, memoria, GC, event loop)
+promClient.collectDefaultMetrics({ register });
+
+// Histograma para latencias HTTP
+const httpHistogram = new promClient.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'Duración de las solicitudes HTTP en segundos',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.05, 0.1, 0.3, 1, 5]
+});
+register.registerMetric(httpHistogram);
+
+// Middleware para medir latencia
+app.use((req, res, next) => {
+  const end = httpHistogram.startTimer({ method: req.method, route: req.path });
+  res.on('finish', () => {
+    end({ status_code: res.statusCode });
+  });
+  next();
+});
+
 app.use(express.json());
 
-// Métricas Prometheus (si usas prom-client)
-promClient.collectDefaultMetrics({ register });
+// Métricas exporters
 app.get('/metrics', async (req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 });
 
-// Rutas de usuario
+// Rutas
 app.use('/', usuariosRouter);
 
 // Healthcheck
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
-});
+app.get('/health', (req, res) => res.status(200).send('OK'));
 
-// Arrancar servidor
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Usuario service listening on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`User service listening on ${PORT}`));

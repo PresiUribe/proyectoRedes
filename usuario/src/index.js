@@ -1,9 +1,12 @@
 const express = require('express');
+const cors = require('cors');
 const promClient = require('prom-client');
 const usuariosRouter = require('./controllers/usuariosController');
 
 const app = express();
 const register = new promClient.Registry();
+
+app.use(cors());
 
 // Métricas por defecto del proceso (CPU, memoria, GC, event loop)
 promClient.collectDefaultMetrics({ register });

@@ -1,26 +1,64 @@
 version: '3.8'
+
+defaults: &defaults
+  restart: unless-stopped
+  environment:
+    - DB_HOST=db
+    - DB_USER=root
+    - DB_PASSWORD=mysql
+    - DB_NAME=usuariosMS
+  networks:
+    - backend
+
 services:
   db:
     image: mysql:8.0
-    container_name: us_db
-    restart: unless-stopped
+    container_name: db
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     environment:
       MYSQL_ROOT_PASSWORD: mysql
-      MYSQL_DATABASE: usuariosMS
+    <<: *defaults
+
+  usuario_ms_1:
+    build: ./usuario
+    container_name: usuario_ms_1
     ports:
-      - "3306:3306"
+      - "3001:3000"
+    <<: *defaults
+
+  usuario_ms_2:
+    build: ./usuario
+    container_name: usuario_ms_2
+    ports:
+      - "3002:3000"
+    <<: *defaults
+
+  usuario_ms_3:
+    build: ./usuario
+    container_name: usuario_ms_3
+    ports:
+      - "3003:3000"
+    <<: *defaults
+
+  haproxy:
+    image: haproxy:2.6-alpine
+    container_name: haproxy
+    ports:
+      - "80:80"
     volumes:
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-  usuario:
-    build: .
-    container_name: usuario_ms
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      DB_HOST: db
-      DB_USER: root
-      DB_PASSWORD: mysql
-      DB_NAME: usuariosMS
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
-      - db
+      - usuario_ms_1
+      - usuario_ms_2
+      - usuario_ms_3
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  db_data:

@@ -24,16 +24,61 @@ services:
     networks:
       - backend
 
+  reservas_ms:
+    build: ./reservas
+    image: reservas_ms:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: mysql
+      DB_NAME: reservasMS
+    networks:
+      - backend
+
+  propiedades_ms:
+    build: ./propiedades
+    image: propiedades_ms:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: mysql
+      DB_NAME: propiedadesMS
+    networks:
+      - backend
+
+  pagos_ms:
+    build: ./pagos
+    image: pagos_ms:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: mysql
+      DB_NAME: pagosMS
+    networks:
+      - backend
+
   haproxy:
     image: haproxy:2.6-alpine
     restart: unless-stopped
     depends_on:
       - usuario_ms
+      - reservas_ms
+      - propiedades_ms
+      - pagos_ms
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     ports:
-      - "80:80"      # frontend HTTP
-      - "8404:8404"  # stats CSV
+      - "80:80"
+      - "8404:8404"
     networks:
       - backend
 
@@ -44,6 +89,9 @@ services:
     depends_on:
       - haproxy
       - usuario_ms
+      - reservas_ms
+      - propiedades_ms
+      - pagos_ms
     ports:
       - "9090:9090"
     volumes:

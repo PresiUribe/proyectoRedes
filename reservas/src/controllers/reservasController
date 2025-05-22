@@ -2,7 +2,7 @@ const { Router } = require('express');
 const axios = require('axios');
 const router = Router();
 const reservasModel = require('../models/reservasModels');
-
+const USERS_BASE = process.env.USERS_URL || 'http://usuario_ms:3000';
 
 
 
@@ -60,7 +60,7 @@ router.post('/reservas', async (req, res) => {
         const { usuario_id, propiedad_id, fecha_reserva, estado } = req.body;
 
         // 1. Validar usuario mediante llamada REST al microservicio de Usuarios
-        const usuarioResponse = await axios.get(`http://192.168.100.2:3001/usuarios/${usuario_id}`);
+        const usuarioResponse = await axios.get(`${USERS_BASE}/usuarios/${usuario_id}`);
         const usuario = usuarioResponse.data;
         if (!usuario || usuario.tipo !== 'huesped') {
             return res.status(400).json({ message: "Usuario inválido o no es un huésped" });

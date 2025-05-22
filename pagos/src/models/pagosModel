@@ -2,10 +2,10 @@ const mysql = require('mysql2/promise');
 
 // Conexión al pool de MySQL (base de datos pagosMS)
 const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: 'mysql',
-    database: 'pagosMS' // Ajusta el nombre de la base de datos si es necesario
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'mysql',
+    database: process.env.DB_NAME || 'pagosMS'
 });
 
 // Función para crear un nuevo pago

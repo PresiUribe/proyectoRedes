@@ -2,10 +2,10 @@ const mysql = require('mysql2/promise');
 
 // Crear un pool de conexiones a la base de datos reservasMS
 const pool = mysql.createPool({
-    host: 'localhost',
-    user: 'root',
-    password: 'mysql',
-    database: 'reservasMS'
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || 'mysql',
+    database: process.env.DB_NAME || 'reservasMS'
 });
 
 

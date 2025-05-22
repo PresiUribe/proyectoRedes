@@ -5,6 +5,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./Airbnb_Texas_Rentals.csv:/var/lib/mysql-files/propiedades.csv
     environment:
       MYSQL_ROOT_PASSWORD: mysql
     networks:
@@ -35,6 +36,7 @@ services:
       DB_USER: root
       DB_PASSWORD: mysql
       DB_NAME: reservasMS
+      USERS_URL: http://usuario_ms:3000
     networks:
       - backend
 
@@ -63,6 +65,8 @@ services:
       DB_USER: root
       DB_PASSWORD: mysql
       DB_NAME: pagosMS
+      RESERVAS_URL: http://reservas_ms:3000
+      USERS_URL: http://usuario_ms:3000
     networks:
       - backend
 
@@ -111,6 +115,18 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
     networks:
       - backend
+
+  front:
+    image: nginx:alpine
+    container_name: proyecto_front
+    ports:
+      - "8081:80"
+    volumes:
+      - ./front:/usr/share/nginx/html:ro
+      - ./front/nginx.conf:/etc/nginx/conf.d/default.conf:ro  # si usas config custom
+    networks:
+      - backend
+
 
 networks:
   backend:

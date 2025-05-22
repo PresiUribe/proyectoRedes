@@ -1,7 +1,6 @@
 FROM node:20-slim
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --production
+RUN npm ci --only=production
 COPY . .
-CMD ["node", "src/index.js"]
-# CMD ["npm", "start"]}
+CMD ["npm", "start"]

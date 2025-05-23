@@ -1,174 +1,164 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # ---------------------------------------------------------------------------
-  # Base de datos MySQL compartida
-  # ---------------------------------------------------------------------------
   db:
     image: mysql:8.0
+    container_name: db
+    environment:
+      # Usamos contraseña fija; puedes cambiarlo o pasarlo por secret
+      MYSQL_ROOT_PASSWORD: mysql
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    environment:
-      MYSQL_ROOT_PASSWORD: mysql
-      MYSQL_DATABASE: usuariosMS
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
     networks:
-      - backend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # Microservicio Usuarios
-  # ---------------------------------------------------------------------------
   usuario_ms:
-    image: usuario_ms:latest      # previamente build -t usuario_ms:latest ./usuario
+    image: usuario_ms:latest
+    depends_on: [db]
     environment:
       DB_HOST: db
       DB_USER: root
       DB_PASSWORD: mysql
       DB_NAME: usuariosMS
-    depends_on: [ db ]
     deploy:
-      replicas: 2
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
       restart_policy:
         condition: on-failure
     networks:
-      - backend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # Microservicio Pagos
-  # ---------------------------------------------------------------------------
-  pagos_ms:
-    image: pagos_ms:latest        # previamente build -t pagos_ms:latest ./pagos
-    environment:
-      DB_HOST: db
-      DB_USER: root
-      DB_PASSWORD: mysql
-      DB_NAME: pagosMS
-      RESERVAS_URL: http://reservas_ms:3000
-    depends_on: [ db ]
-    deploy:
-      replicas: 2
-      restart_policy:
-        condition: on-failure
-    networks:
-      - backend
-
-  # ---------------------------------------------------------------------------
-  # Microservicio Reservas
-  # ---------------------------------------------------------------------------
   reservas_ms:
-    image: reservas_ms:latest     # previamente build -t reservas_ms:latest ./reservas
+    image: reservas_ms:latest
+    depends_on: [db]
     environment:
       DB_HOST: db
       DB_USER: root
       DB_PASSWORD: mysql
       DB_NAME: reservasMS
-      USERS_URL: http://usuario_ms:3000
-    depends_on: [ db ]
     deploy:
-      replicas: 2
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
       restart_policy:
         condition: on-failure
     networks:
-      - backend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # Microservicio Propiedades
-  # ---------------------------------------------------------------------------
   propiedades_ms:
-    image: propiedades_ms:latest  # previamente build -t propiedades_ms:latest ./propiedades
+    image: propiedades_ms:latest
+    depends_on: [db]
     environment:
       DB_HOST: db
       DB_USER: root
       DB_PASSWORD: mysql
       DB_NAME: propiedadesMS
-    depends_on: [ db ]
     deploy:
       replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
       restart_policy:
         condition: on-failure
     networks:
-      - backend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # API Gateway con HAProxy
-  # ---------------------------------------------------------------------------
+  pagos_ms:
+    image: pagos_ms:latest
+    depends_on: [db]
+    environment:
+      DB_HOST: db
+      DB_USER: root
+      DB_PASSWORD: mysql
+      DB_NAME: pagosMS
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    networks:
+      - back
+
   haproxy:
     image: haproxy:2.6-alpine
+    depends_on:
+      - usuario_ms
+      - reservas_ms
+      - propiedades_ms
+      - pagos_ms
+    ports:
+      - "80:80"
+      - "8404:8404"
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
-    ports:
-      - "80:80"      # HTTP gateway
-      - "8404:8404"  # stats CSV
-    depends_on: [ usuario_ms, pagos_ms, reservas_ms, propiedades_ms ]
     deploy:
       replicas: 2
       restart_policy:
         condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 5s
     networks:
-      - backend
-      - frontend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # Prometheus
-  # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - haproxy
     ports:
       - "9090:9090"
-    depends_on: [ haproxy ]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
     networks:
-      - backend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # Grafana
-  # ---------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: admin
+    container_name: proyecto_grafana
+    depends_on:
+      - prometheus
     ports:
       - "3003:3000"
-    depends_on: [ prometheus ]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
     deploy:
       replicas: 1
       restart_policy:
         condition: on-failure
     networks:
-      - backend
+      - back
 
-  # ---------------------------------------------------------------------------
-  # (Opcional) Front-end estático servido por NGINX
-  # ---------------------------------------------------------------------------
-  front:
-    image: nginx:stable-alpine
+  frontend:
+    image: nginx:alpine
     volumes:
       - ./front:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./front/nginx.conf:/etc/nginx/conf.d/default.conf:ro   # opcional
     ports:
-      - "8081:80"
+      - "8080:80"
     deploy:
       replicas: 2
       restart_policy:
         condition: on-failure
     networks:
-      - frontend
+      - back
 
 networks:
-  backend:
-    driver: overlay
-  frontend:
+  back:
     driver: overlay
 
 volumes:
   db_data:
-    driver: local

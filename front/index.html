@@ -14,6 +14,34 @@
     #propertySection, #adminSection {
       display: none;
     }
+    /* ⚡ PAGINACIÓN ⚡ Estilos nuevos */
+    .pagination {
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+    }
+    .pagination button {
+      padding: 8px 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .pagination button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+    }
+    .page-info {
+      margin: 0 15px;
+    }
+    .page-select {
+      padding: 6px;
+      border-radius: 4px;
+      border: 1px solid #ced4da;
+    }
   </style>
 </head>
 <body>
@@ -70,6 +98,8 @@
     </form>
     <!-- Contenedor de propiedades -->
     <div class="row" id="propertiesContainer"></div>
+    <!-- ⚡ PAGINACIÓN ⚡ Controles de paginación -->
+    <div id="pagination-controls" class="pagination"></div>
   </section>
 
   <!-- Vista Admin: Para validar pagos y cambiar el estado de la reserva -->
@@ -219,6 +249,10 @@
     let currentUser = null;
     let currentPaymentPropertyId = null;
     let currentPropertyCost = 0;
+    let currentPage = 1;
+    const itemsPerPage = 20;
+    let totalProperties = 0;
+    let totalPages = 1;
 
 // Llamamos SIEMPRE al gateway en el puerto 80:
 const API_BASE_URL = 'http://localhost';   // << puerto 80
@@ -311,9 +345,10 @@ const BASE_RESERVAS_URL   = `${API_BASE_URL}`;
         });
       });
 
-      // Filtros (vista huesped)
+      // Filtros (modificado para paginación)
       $('#filterForm').submit(function(e) {
         e.preventDefault();
+        currentPage = 1; // ⚡ PAGINACIÓN ⚡ Resetear a página 1
         loadProperties();
       });
 
@@ -384,72 +419,119 @@ const BASE_RESERVAS_URL   = `${API_BASE_URL}`;
       });
     }
 
-    // Cargar propiedades (vista huesped)
-    function loadProperties() {
-  const ciudad = $('#cityFilter').val() || '';
-  const precio_min = $('#minPrice').val() || '';
-  const precio_max = $('#maxPrice').val() || '';
-  const cuartos = $('#roomCount').val() || '';
+   // Cargar propiedades (vista huésped)
+function loadProperties() {
+  const ciudad     = $('#cityFilter').val()   || '';
+  const precio_min = $('#minPrice').val()     || '';
+  const precio_max = $('#maxPrice').val()     || '';
+  const bedrooms_count    = $('#roomCount').val()    || '';
 
-  let url = `${BASE_PROPERTIES_URL}/propiedades`;
-  let params = [];
+  // Montar URL con page y limit
+  let url = `${BASE_PROPERTIES_URL}/propiedades?page=${currentPage}&limit=${itemsPerPage}`;
+  const params = [];
   if (ciudad)     params.push(`city=${ciudad}`);
   if (precio_min) params.push(`precio_min=${precio_min}`);
   if (precio_max) params.push(`precio_max=${precio_max}`);
-  if (cuartos)    params.push(`cuartos=${cuartos}`);
-  if (params.length > 0) {
-    url += '?' + params.join('&');
-  }
-
+  if (bedrooms_count)    params.push(`bedrooms_count=${bedrooms_count}`);
+  if (params.length) url += '&' + params.join('&');
+console.log('→ Fetching:', url);
   $.ajax({
-    url: url,
+    url,
     method: 'GET',
-    success: function(data) {
+    success: function(resp) {
+      // 1) Extraemos el array y la paginación
+      const properties = resp.data || [];
+      const pg         = resp.pagination || {};
+      totalProperties  = pg.total       || 0;
+      currentPage      = pg.page        || 1;
+      // opcional: itemsPerPage = pg.pageSize || itemsPerPage;
+      totalPages       = pg.totalPages  || 1;
+
+      // 2) Renderizamos tarjetas
       $('#propertiesContainer').empty();
-      if (data.length === 0) {
+      if (!properties.length) {
         $('#propertiesContainer').append('<p>No se encontraron propiedades.</p>');
       } else {
-        data.forEach(prop => {
-          // Dependiendo de cómo venga tu dato en la BD, si es booleano (true/false)
-          // o entero (1/0), ajusta la validación:
-          const estaDisponible = prop.disponible === true || prop.disponible === 1;
-
-          let card = `
+        properties.forEach(prop => {
+          const estaDisponible = prop.disponible === 1 || prop.disponible === true;
+          const card = `
             <div class="col-md-4" id="property-${prop.id}">
               <div class="card mb-3">
                 <div class="card-body">
                   <p><strong>ID:</strong> ${prop.id}</p>
                   <h5 class="card-title">${prop.title}</h5>
                   <p class="card-text">${prop.description}</p>
-                  <p class="card-text"><strong>Ciudad:</strong> ${prop.city}</p>
-                  <p class="card-text"><strong>Precio:</strong> $${prop.average_rate_per_night}</p>
-                  <p class="card-text"><strong>Cuartos:</strong> ${prop.bedrooms_count}</p>
-                  <p class="card-text" id="estado-${prop.id}">
-                    Estado: ${estaDisponible ? 'Disponible' : 'No disponible'}
-                  </p>
-                  <button class="btn btn-primary" id="btnReservar-${prop.id}"
-                          onclick="openReserveModal(${prop.id}, ${prop.average_rate_per_night})"
-                          ${estaDisponible ? '' : 'disabled'}>
-                    Reservar
-                  </button>
-                  <button class="btn btn-success ms-2" id="btnPagar-${prop.id}"
-                          onclick="openPaymentModal(${prop.id}, ${prop.average_rate_per_night})"
-                          ${estaDisponible ? '' : 'disabled'}>
-                    Pagar
-                  </button>
+                  <p><strong>Ciudad:</strong> ${prop.city}</p>
+                  <p><strong>Precio:</strong> $${prop.average_rate_per_night}</p>
+                  <p><strong>Cuartos:</strong> ${prop.bedrooms_count}</p>
+                  <p><strong>Estado:</strong> ${estaDisponible ? 'Disponible' : 'No disponible'}</p>
+                  <button class="btn btn-primary" onclick="openReserveModal(${prop.id}, ${prop.average_rate_per_night})" ${!estaDisponible?'disabled':''}>Reservar</button>
+                  <button class="btn btn-success ms-2" onclick="openPaymentModal(${prop.id}, ${prop.average_rate_per_night})" ${!estaDisponible?'disabled':''}>Pagar</button>
                 </div>
               </div>
-            </div>
-          `;
+            </div>`;
           $('#propertiesContainer').append(card);
         });
       }
+
+      // 3) Actualizamos los controles de paginación
+      updatePaginationControls();
     },
     error: function() {
-      console.log('Error al cargar propiedades');
+      console.error('Error al cargar propiedades');
     }
   });
 }
+
+function updatePaginationControls() {
+  const container = $('#pagination-controls');
+  container.empty();
+
+  // Botón Anterior
+  $('<button>')
+    .html('&laquo; Anterior')
+    .prop('disabled', currentPage === 1)
+    .click(() => {
+      if (currentPage > 1) {
+        currentPage--;
+        loadProperties();
+      }
+    })
+    .appendTo(container);
+
+  // Info de página
+  container.append(`<span class="page-info">Página ${currentPage} de ${totalPages}</span>`);
+
+  // Selector de página
+  const select = $('<select class="page-select">')
+    .change(e => {
+      currentPage = +e.target.value;
+      loadProperties();
+    })
+    .appendTo(container);
+
+  for (let i = 1; i <= totalPages; i++) {
+    select.append($('<option>')
+      .val(i)
+      .text(i)
+      .prop('selected', i === currentPage)
+    );
+  }
+
+  // Botón Siguiente
+  $('<button>')
+    .html('Siguiente &raquo;')
+    .prop('disabled', currentPage >= totalPages)
+    .click(() => {
+      if (currentPage < totalPages) {
+        currentPage++;
+        loadProperties();
+      }
+    })
+    .appendTo(container);
+}
+
+
     // Cargar propiedades para la vista admin
    function loadAdminProperties() {
   $.ajax({

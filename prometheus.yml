@@ -2,12 +2,21 @@ global:
   scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'usuario_ms'
+  # ──────────────────────────────────────────────
+  # 1) Todos los microservicios con endpoint /metrics
+  # ──────────────────────────────────────────────
+  - job_name: 'microservicios'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['usuario_ms:3000']
+      - targets:
+          - 'usuario_ms:3000'
+          - 'reservas_ms:3000'
+          - 'propiedades_ms:3000'
+          - 'pagos_ms:3000'
 
+  # ──────────────────────────────────────────────
+  # 2) HAProxy stats en CSV con basic_auth
+  # ──────────────────────────────────────────────
   - job_name: 'haproxy'
-    metrics_path: '/stats;csv'
     static_configs:
-      - targets: ['haproxy:8404']   # <<< ahora en 8404
+      - targets: ['haproxy-exporter:9101']

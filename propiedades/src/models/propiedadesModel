@@ -8,35 +8,49 @@ const connection = mysql.createPool({
     database: process.env.DB_NAME || 'propiedadesMS'
 });
 
-// Obtener todas las propiedades con filtros opcionales
-// Filtros esperados:
-//   filtros.ciudad -> city
-//   filtros.cuartos -> bedrooms_count
-//   filtros.precio_min -> average_rate_per_night >= ...
-//   filtros.precio_max -> average_rate_per_night <= ...
-async function traerPropiedades(filtros) {
-    let query = 'SELECT * FROM propiedades WHERE 1';
-    let params = [];
+async function contarPropiedades({ city, bedrooms_count, precio_min, precio_max }) {
+  let sql    = 'SELECT COUNT(*) AS total FROM propiedades WHERE 1=1';
+  const params = [];
 
-    if (filtros.ciudad) {
-        query += ' AND city = ?';
-        params.push(filtros.ciudad);
-    }
-    if (filtros.cuartos) {
-        query += ' AND bedrooms_count = ?';
-        params.push(filtros.cuartos);
-    }
-    if (filtros.precio_min) {
-        query += ' AND average_rate_per_night >= ?';
-        params.push(filtros.precio_min);
-    }
-    if (filtros.precio_max) {
-        query += ' AND average_rate_per_night <= ?';
-        params.push(filtros.precio_max);
-    }
+  if (city) {
+    sql    += ' AND city = ?';
+    params.push(city);
+  }
+  if (bedrooms_count) {
+    sql    += ' AND bedrooms_count = ?';
+    params.push(bedrooms_count);
+  }
+  if (precio_min) {
+    sql    += ' AND average_rate_per_night >= ?';
+    params.push(precio_min);
+  }
+  if (precio_max) {
+    sql    += ' AND average_rate_per_night <= ?';
+    params.push(precio_max);
+  }
 
-    const [rows] = await connection.query(query, params);
-    return rows;
+  const [[{ total }]] = await connection.query(sql, params);
+  return total;
+}
+
+/**
+ * Trae página de propiedades según filtros, limit y offset.
+ */
+async function traerPropiedades({ filtros, limit, offset }) {
+  const { city, bedrooms_count, precio_min, precio_max } = filtros;
+  let sql    = 'SELECT * FROM propiedades WHERE 1=1';
+  const params = [];
+
+  if (city)          { sql    += ' AND city = ?';                   params.push(city); }
+  if (bedrooms_count){ sql    += ' AND bedrooms_count = ?';         params.push(bedrooms_count); }
+  if (precio_min)    { sql    += ' AND average_rate_per_night >= ?'; params.push(precio_min); }
+  if (precio_max)    { sql    += ' AND average_rate_per_night <= ?'; params.push(precio_max); }
+
+  sql += ' ORDER BY id LIMIT ? OFFSET ?';
+  params.push(limit, offset);
+
+  const [rows] = await connection.query(sql, params);
+  return rows;
 }
 
 // Obtener la información de una propiedad por su ID
@@ -131,6 +145,7 @@ async function actualizarDisponibilidad(id, disponible) {
 
 
 module.exports = {
+    contarPropiedades,
     traerPropiedades,
     traerPropiedad,
     crearPropiedad,

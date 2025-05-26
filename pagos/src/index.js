@@ -32,7 +32,7 @@ app.get('/metrics', async (req, res) => {
 
 // Rutas
 app.use('/', pagosRouter);
-app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/pagos/health', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Pagos service listening on ${PORT}`));

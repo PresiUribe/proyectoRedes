@@ -10,6 +10,7 @@ services:
     volumes:
       - db_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./Airbnb_Texas_Rentals.csv:/var/lib/mysql-files/propiedades.csv
     deploy:
       replicas: 1
       restart_policy:
@@ -111,6 +112,15 @@ services:
     networks:
       - back
 
+  haproxy-exporter:
+    image: prom/haproxy-exporter:latest
+    command:
+      - --haproxy.scrape-uri=http://admin:secret@haproxy:8404/stats;csv
+    ports:
+      - "9101:9101"
+    networks:
+      - back
+
   prometheus:
     image: prom/prometheus:latest
     depends_on:
@@ -155,6 +165,46 @@ services:
         condition: on-failure
     networks:
       - back
+
+
+  spark-master:
+    image: bitnami/spark:3.3.2
+    command: start-master.sh
+    ports:
+      - "7077:7077"
+      - "8082:8082"
+    networks:
+      - back
+
+  spark-worker:
+    image: bitnami/spark:3.3.2
+    depends_on:
+      - spark-master
+    command: start-worker.sh spark://spark-master:7077
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+    networks:
+      - back
+
+  spark-job:
+    image: myregistry/streaming-spark:latest
+    depends_on:
+      - spark-master
+      - spark-worker
+    command: >
+      /opt/bitnami/spark/bin/spark-submit
+        --master spark://spark-master:7077
+        --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.2
+        /opt/bitnami/spark/app/streaming_job.py
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - back
+
 
 networks:
   back:

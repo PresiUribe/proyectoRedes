@@ -32,7 +32,7 @@ app.get('/metrics', async (req, res) => {
 
 // Rutas
 app.use('/', propiedadesRouter);
-app.get('/health', (req, res) => res.status(200).send('OK'));
+app.get('/propiedades/health', (req, res) => res.status(200).send('OK'));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Propiedades service listening on ${PORT}`));

@@ -102,15 +102,21 @@
     <div id="pagination-controls" class="pagination"></div>
   </section>
 
-  <!-- Vista Admin: Para validar pagos y cambiar el estado de la reserva -->
+
+<!-- Vista Admin: Para validar pagos y cambiar el estado de la reserva -->
 <section id="adminSection" class="container my-4">
   <h2 class="mb-3">Administración</h2>
   <!-- Lista de pagos pendientes (se muestra en la parte superior) -->
   <div id="pendingPayments"></div>
   <!-- Lista de propiedades con su estado de disponibilidad y botón para cambiarlo -->
   <div id="adminProperties"></div>
+
+  <!-- Aquí añadimos los controles de paginación -->
+  <div id="admin-pagination-controls" class="d-flex justify-content-center my-3"></div>
+
   <button class="btn btn-secondary mt-2" onclick="hideAdminSection()">Ocultar Administración</button>
 </section>
+
 
   <!-- Modal Login -->
   <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
@@ -253,6 +259,9 @@
     const itemsPerPage = 20;
     let totalProperties = 0;
     let totalPages = 1;
+    let currentAdminPage     = 1;
+    const adminItemsPerPage  = 10;
+    let adminTotalPages      = 1;
 
 // Llamamos SIEMPRE al gateway en el puerto 80:
 const API_BASE_URL = 'http://localhost';   // << puerto 80
@@ -533,37 +542,75 @@ function updatePaginationControls() {
 
 
     // Cargar propiedades para la vista admin
-   function loadAdminProperties() {
+   function loadAdminProperties(page = currentAdminPage) {
   $.ajax({
-    url: `${BASE_PROPERTIES_URL}/propiedades`,
+    url: `${BASE_PROPERTIES_URL}/propiedades?page=${page}&limit=${adminItemsPerPage}`,
     method: 'GET',
-    success: function(data) {
+    success: function(resp) {
+      const props = resp.data || [];
+      const pg    = resp.pagination || {};
+
+      // Actualizamos estado
+      currentAdminPage = pg.page        || page;
+      adminTotalPages  = pg.totalPages  || 1;
+
+      // Renderizamos tarjetas
       let html = '';
-      if (data.length === 0) {
+      if (!props.length) {
         html = '<p>No se encontraron propiedades.</p>';
       } else {
-        data.forEach(prop => {
+        props.forEach(prop => {
           html += `
             <div class="card mb-3">
               <div class="card-body">
                 <p><strong>ID:</strong> ${prop.id}</p>
                 <p><strong>Título:</strong> ${prop.title}</p>
-                <p><strong>Estado Propiedad:</strong> ${prop.disponible ? 'Disponible' : 'No disponible'}</p>
-                <button class="btn btn-info" onclick="toggleDisponibilidad(${prop.id}, ${prop.disponible})">
+                <p><strong>Disponible:</strong> ${prop.disponible ? 'Sí' : 'No'}</p>
+                <button class="btn btn-info"
+                        onclick="toggleDisponibilidad(${prop.id}, ${prop.disponible})">
                   Cambiar Disponibilidad
                 </button>
               </div>
-            </div>
-          `;
+            </div>`;
         });
       }
       $('#adminProperties').html(html);
+
+      // Renderizamos controles de paginación
+      renderAdminPagination();
     },
     error: function() {
       $('#adminProperties').html('<p>Error al cargar propiedades para administración.</p>');
     }
   });
 }
+
+function renderAdminPagination() {
+  const container = $('#admin-pagination-controls');
+  container.empty();
+
+  // Botón «Anterior»
+  $('<button>')
+    .text('« Anterior')
+    .prop('disabled', currentAdminPage === 1)
+    .addClass('btn btn-secondary me-2')
+    .click(() => loadAdminProperties(currentAdminPage - 1))
+    .appendTo(container);
+
+  // Info de página
+  container.append(
+    `<span class="page-info align-middle">Página ${currentAdminPage} de ${adminTotalPages}</span>`
+  );
+
+  // Botón «Siguiente»
+  $('<button>')
+    .text('Siguiente »')
+    .prop('disabled', currentAdminPage >= adminTotalPages)
+    .addClass('btn btn-secondary ms-2')
+    .click(() => loadAdminProperties(currentAdminPage + 1))
+    .appendTo(container);
+}
+
 
 // Función para cambiar el estado de disponibilidad de una propiedad
 function toggleDisponibilidad(propId, currentValue) {

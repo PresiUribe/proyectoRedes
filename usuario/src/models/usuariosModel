@@ -1,57 +1,206 @@
-const mysql = require('mysql2/promise');
+const mysql  = require('mysql2/promise');
+const crypto = require('crypto');
+const bcrypt = require('bcrypt');
 
-// Configuración de la conexión a la base de datos
+// Número de rondas para bcrypt
+const SALT_ROUNDS = 10;
+
+// Clave de 32 bytes para AES-256; cámbiala en producción por una cadena fuerte en tu .env
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || '12345678901234567890123456789012';
+const IV_LENGTH      = 16;
+
+// Pool de conexiones MySQL
 const connection = mysql.createPool({
-    host: process.env.DB_HOST || 'localhost',
-    user: process.env.DB_USER || 'root',
-    password: process.env.DB_PASSWORD || 'mysql',
-    database: process.env.DB_NAME || 'usuariosMS'
-  });
+  host:     process.env.DB_HOST     || 'localhost',
+  user:     process.env.DB_USER     || 'root',
+  password: process.env.DB_PASSWORD || 'mysql',
+  database: process.env.DB_NAME     || 'usuariosMS'
+});
 
-// Obtener la información de un usuario por ID
+/**
+ * Devuelve el usuario descifrado (tarjeta/CVC/expiración) por su id.
+ * @param {number} id
+ * @returns {Promise<Object[]>}
+ */
 async function traerUsuario(id) {
-    const [rows] = await connection.query('SELECT * FROM usuarios WHERE id = ?', [id]);
-    return rows;
+  const [rows] = await connection.query(
+    'SELECT * FROM usuarios WHERE id = ?',
+    [id]
+  );
+
+  if (rows.length > 0) {
+    const u = rows[0];
+    u.numero_tarjeta   = decrypt(u.numero_tarjeta);
+    u.cvc              = decrypt(u.cvc);
+    u.fecha_expiracion = decrypt(u.fecha_expiracion);
+    // Si no quieres exponer el hash de la contraseña al cliente, descomenta:
+    // delete u.password;
+  }
+
+  return rows;
 }
 
-// Validar credenciales de usuario (login)
-async function validarCredenciales(usuario, password) {
-    const [rows] = await connection.query(
-        'SELECT * FROM usuarios WHERE usuario = ? AND password = ?',
-        [usuario, password]
-    );
-    return rows;
+/**
+ * Valida usuario+password en texto plano.
+ * Retorna un array vacío si falla, o [usuario] con datos descifrados si acierta.
+ * @param {string} usuario
+ * @param {string} plainPassword
+ * @returns {Promise<Object[]>}
+ */
+async function validarCredenciales(usuario, plainPassword) {
+  // 1) Busca solo por usuario
+  const [rows] = await connection.query(
+    'SELECT * FROM usuarios WHERE usuario = ?',
+    [usuario]
+  );
+  if (rows.length === 0) return [];
+
+  const user = rows[0];
+
+  // 2) Compara password con bcrypt
+  const isMatch = await bcrypt.compare(plainPassword, user.password);
+  if (!isMatch) return [];
+
+  // 3) Descifra datos sensibles
+  user.numero_tarjeta   = decrypt(user.numero_tarjeta);
+  user.cvc              = decrypt(user.cvc);
+  user.fecha_expiracion = decrypt(user.fecha_expiracion);
+  // delete user.password; // descomenta si no deseas exponer el hash
+
+  return [user];
 }
 
-// Actualizar la información de un usuario existente
+/**
+ * Crea un nuevo usuario, hasheando la contraseña
+ * y cifrando número de tarjeta, CVC y expiración.
+ */
+async function crearUsuario(
+  nombre,
+  email,
+  usuario,
+  password,        // contraseña en texto plano
+  tipo,
+  tipo_tarjeta,
+  numero_tarjeta,
+  cvc,
+  fecha_expiracion
+) {
+  // 1) Genero hash de la contraseña
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+  // 2) Cifro los datos sensibles (si quieres):
+  const encryptedNumCard = encrypt(numero_tarjeta);
+  const encryptedCvc     = encrypt(cvc);
+  const encryptedExp     = encrypt(fecha_expiracion);
+
+  // 3) Inserto ya el hash y los campos cifrados
+  const [result] = await connection.query(
+    'INSERT INTO usuarios VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [
+      nombre,
+      email,
+      usuario,
+      hashedPassword,   // ← aquí el hash, no el texto plano
+      tipo,
+      tipo_tarjeta,
+      encryptedNumCard,
+      encryptedCvc,
+      encryptedExp
+    ]
+  );
+  return result;
+}
+
 async function actualizarUsuario(id, data) {
-    const { nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion } = data;
-    const [result] = await connection.query(
-        'UPDATE usuarios SET nombre = ?, email = ?, usuario = ?, password = ?, tipo = ?, tipo_tarjeta = ?, numero_tarjeta = ?, cvc = ?, fecha_expiracion = ? WHERE id = ?',
-        [nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion, id]
-    );
-    return result;
+  // extraigo la contraseña de data…
+  const { password } = data;
+
+  // 1) Hash de la nueva contraseña
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+  // 2) Cifro también los demás campos si quieres…
+  const encryptedNumCard = encrypt(data.numero_tarjeta);
+  const encryptedCvc     = encrypt(data.cvc);
+  const encryptedExp     = encrypt(data.fecha_expiracion);
+
+  // 3) Actualizo con el hash
+  const [result] = await connection.query(
+    `UPDATE usuarios SET
+       nombre          = ?,
+       email           = ?,
+       usuario         = ?,
+       password        = ?,
+       tipo            = ?,
+       tipo_tarjeta    = ?,
+       numero_tarjeta  = ?,
+       cvc             = ?,
+       fecha_expiracion= ?
+     WHERE id = ?`,
+    [
+      data.nombre,
+      data.email,
+      data.usuario,
+      hashedPassword,      // ← hash aquí
+      data.tipo,
+      data.tipo_tarjeta,
+      encryptedNumCard,
+      encryptedCvc,
+      encryptedExp,
+      id
+    ]
+  );
+  return result;
 }
 
-// Crear un nuevo usuario
-async function crearUsuario(nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion) {
-    const [result] = await connection.query(
-        'INSERT INTO usuarios VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [nombre, email, usuario, password, tipo, tipo_tarjeta, numero_tarjeta, cvc, fecha_expiracion]
-    );
-    return result;
-}
-
-// Eliminar un usuario por ID
+/**
+ * Borra un usuario por ID.
+ */
 async function borrarUsuario(id) {
-    const [result] = await connection.query('DELETE FROM usuarios WHERE id = ?', [id]);
-    return result;
+  const [result] = await connection.query(
+    'DELETE FROM usuarios WHERE id = ?',
+    [id]
+  );
+  return result;
+}
+
+/**
+ * Cifra un texto con AES-256-CBC.
+ */
+function encrypt(text) {
+  const iv     = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(
+    'aes-256-cbc',
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted;
+}
+
+/**
+ * Descifra un texto cifrado con encrypt().
+ */
+function decrypt(text) {
+  const parts        = text.split(':');
+  const iv           = Buffer.from(parts.shift(), 'hex');
+  const encryptedHex = parts.join(':');
+  const decipher     = crypto.createDecipheriv(
+    'aes-256-cbc',
+    Buffer.from(ENCRYPTION_KEY),
+    iv
+  );
+  let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+  decrypted    += decipher.final('utf8');
+  return decrypted;
 }
 
 module.exports = {
-    traerUsuario,
-    validarCredenciales,
-    actualizarUsuario,
-    crearUsuario,
-    borrarUsuario
+  traerUsuario,
+  validarCredenciales,
+  crearUsuario,
+  actualizarUsuario,
+  borrarUsuario,
+  encrypt,
+  decrypt
 };

@@ -1,14 +1,14 @@
 {
   "dashboard": {
-    "uid": "full-stack-metrics",
-    "title": "Dashboard Full Stack - Microservicios & HAProxy",
+    "uid": "full-stack-metrics-v2",
+    "title": "Dashboard Full Stack - Métricas Reales",
     "timezone": "browser",
     "schemaVersion": 27,
     "version": 1,
     "panels": [
       {
         "type": "timeseries",
-        "title": "CPU Usage Microservicios (s/s)",
+        "title": "CPU Node.js (microservicios)",
         "datasource": "Prometheus",
         "targets": [
           {
@@ -20,7 +20,7 @@
       },
       {
         "type": "timeseries",
-        "title": "Memoria residente Microservicios (bytes)",
+        "title": "Memoria residente Node.js",
         "datasource": "Prometheus",
         "targets": [
           {
@@ -32,7 +32,39 @@
       },
       {
         "type": "timeseries",
-        "title": "Latencia HTTP Microservicios (P50/P95/P99)",
+        "title": "Handles activos Node.js",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "nodejs_active_handles_total{job=\"microservicios\"}",
+            "legendFormat": "{{instance}}"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 }
+      },
+      {
+        "type": "timeseries",
+        "title": "Event Loop Lag (P50/P90/P99)",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(nodejs_eventloop_lag_seconds_bucket{job=\"microservicios\"}[1m])) by (le,instance))",
+            "legendFormat": "P50 {{instance}}"
+          },
+          {
+            "expr": "histogram_quantile(0.90, sum(rate(nodejs_eventloop_lag_seconds_bucket{job=\"microservicios\"}[1m])) by (le,instance))",
+            "legendFormat": "P90 {{instance}}"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(nodejs_eventloop_lag_seconds_bucket{job=\"microservicios\"}[1m])) by (le,instance))",
+            "legendFormat": "P99 {{instance}}"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 }
+      },
+      {
+        "type": "timeseries",
+        "title": "Latencia HTTP (microservicios)",
         "datasource": "Prometheus",
         "targets": [
           {
@@ -48,11 +80,11 @@
             "legendFormat": "P99 {{instance}}"
           }
         ],
-        "gridPos": { "x": 0, "y": 6, "w": 12, "h": 6 }
+        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 }
       },
       {
         "type": "timeseries",
-        "title": "Throughput HTTP Microservicios (req/s)",
+        "title": "Throughput HTTP (req/s)",
         "datasource": "Prometheus",
         "targets": [
           {
@@ -60,67 +92,50 @@
             "legendFormat": "{{instance}}"
           }
         ],
-        "gridPos": { "x": 12, "y": 6, "w": 12, "h": 6 }
-      },
-      {
-        "type": "timeseries",
-        "title": "HAProxy Frontend Requests (req/s)",
-        "datasource": "Prometheus",
-        "targets": [
-          {
-            "expr": "sum(rate(haproxy_frontend_requests_total[1m]))",
-            "legendFormat": "Frontend RPS"
-          }
-        ],
-        "gridPos": { "x": 0, "y": 12, "w": 12, "h": 6 }
-      },
-      {
-        "type": "timeseries",
-        "title": "HAProxy Backend Connections Active",
-        "datasource": "Prometheus",
-        "targets": [
-          {
-            "expr": "haproxy_backend_connections_active",
-            "legendFormat": "{{backend}}"
-          }
-        ],
         "gridPos": { "x": 12, "y": 12, "w": 12, "h": 6 }
       },
+
       {
         "type": "timeseries",
-        "title": "HAProxy Backend Server Up",
+        "title": "Goroutines (Go)",
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "haproxy_server_up",
-            "legendFormat": "{{backend}}: {{instance}}"
+            "expr": "go_goroutines{job=\"microservicios\"}",
+            "legendFormat": "{{instance}}"
           }
         ],
         "gridPos": { "x": 0, "y": 18, "w": 12, "h": 6 }
       },
       {
         "type": "timeseries",
-        "title": "Scrape Duration & Samples Microservicios",
+        "title": "GC Pause (P50/P95/P99)",
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "scrape_duration_seconds{job=\"microservicios\"}",
-            "legendFormat": "Duración scrape (s)"
+            "expr": "histogram_quantile(0.50, sum(rate(go_gc_duration_seconds_bucket{job=\"microservicios\"}[5m])) by (le))",
+            "legendFormat": "P50"
           },
           {
-            "expr": "scrape_samples_scraped{job=\"microservicios\"}",
-            "legendFormat": "Muestras"
+            "expr": "histogram_quantile(0.95, sum(rate(go_gc_duration_seconds_bucket{job=\"microservicios\"}[5m])) by (le))",
+            "legendFormat": "P95"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(go_gc_duration_seconds_bucket{job=\"microservicios\"}[5m])) by (le))",
+            "legendFormat": "P99"
           }
         ],
         "gridPos": { "x": 12, "y": 18, "w": 12, "h": 6 }
       },
+
+
       {
         "type": "timeseries",
-        "title": "Estado de Exporter HAProxy (up)",
+        "title": "HAProxy up",
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "up{job=\"haproxy\"}",
+            "expr": "haproxy_up",
             "legendFormat": "{{instance}}"
           }
         ],
@@ -128,19 +143,69 @@
       },
       {
         "type": "timeseries",
-        "title": "Scrape Duration & Samples HAProxy",
+        "title": "Scrapes HAProxy Exporter",
         "datasource": "Prometheus",
         "targets": [
           {
-            "expr": "scrape_duration_seconds{job=\"haproxy\"}",
-            "legendFormat": "Duración scrape (s)"
+            "expr": "haproxy_exporter_scrapes_total",
+            "legendFormat": "scrapes"
           },
           {
-            "expr": "scrape_samples_scraped{job=\"haproxy\"}",
-            "legendFormat": "Muestras"
+            "expr": "haproxy_exporter_csv_parse_failures_total",
+            "legendFormat": "errores CSV"
           }
         ],
         "gridPos": { "x": 12, "y": 24, "w": 12, "h": 6 }
+      },
+
+
+      {
+        "type": "timeseries",
+        "title": "Brokers en Cluster Kafka",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "kafka_brokers",
+            "legendFormat": "brokers"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 30, "w": 12, "h": 6 }
+      },
+      {
+        "type": "timeseries",
+        "title": "Offsets por Partition (actual/oldest)",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "kafka_topic_partition_current_offset{topic=\"pagos\"}",
+            "legendFormat": "pagos current"
+          },
+          {
+            "expr": "kafka_topic_partition_oldest_offset{topic=\"pagos\"}",
+            "legendFormat": "pagos oldest"
+          },
+          {
+            "expr": "kafka_topic_partition_current_offset{topic=\"reservas\"}",
+            "legendFormat": "reservas current"
+          },
+          {
+            "expr": "kafka_topic_partition_oldest_offset{topic=\"reservas\"}",
+            "legendFormat": "reservas oldest"
+          }
+        ],
+        "gridPos": { "x": 12, "y": 30, "w": 12, "h": 6 }
+      },
+      {
+        "type": "timeseries",
+        "title": "Under-replicated Partitions",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "kafka_topic_partition_under_replicated_partition",
+            "legendFormat": "{{topic}}/{{partition}}"
+          }
+        ],
+        "gridPos": { "x": 0, "y": 36, "w": 24, "h": 6 }
       }
     ]
   },

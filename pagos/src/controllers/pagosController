@@ -8,13 +8,33 @@ const RESERVAS_BASE = process.env.RESERVAS_URL || 'http://reservas_ms:3000';
 // pagosController.js
 router.get('/pagos/pending', async (req, res) => {
   try {
-    const pagosPendientes = await pagosModel.obtenerPagosPendientes();
-    res.json(pagosPendientes);
+    const pagos = await pagosModel.obtenerPagosPendientes();
+
+    const enriched = await Promise.all(pagos.map(async p => {
+      try {
+        const { data: reserva } = await axios.get(
+          `${RESERVAS_BASE}/reservas/${p.reserva_id}`
+        );
+        return {
+          ...p,
+          propiedad_id: reserva.propiedad_id
+        };
+      } catch (err) {
+        console.error(`Error al obtener reserva ${p.reserva_id}:`, err.message);
+        return {
+          ...p,
+          propiedad_id: null
+        };
+      }
+    }));
+
+    res.json(enriched);
   } catch (error) {
     console.error(error);
     res.status(500).send("Error al obtener pagos pendientes");
   }
 });
+
 
 
 

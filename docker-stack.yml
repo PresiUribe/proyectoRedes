@@ -2,28 +2,61 @@ version: "3.8"
 
 services:
   kafka:
-    image: bitnami/kafka:latest
+    image: bitnami/kafka:3.3.2
     environment:
-      # arranca en modo KRaft: broker + controller
+      # 1) roles: broker + controller
       - KAFKA_CFG_PROCESS_ROLES=broker,controller
-      # identificador único de este nodo
+
+      # 2) un node.id (distinto para cada nodo en un cluster multi-node)
       - KAFKA_CFG_NODE_ID=1
-      # voters para el quorum de controller (ID@host:port)
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-      # listeners internos
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+
+      # 3) listeners
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      # cómo se ve desde fuera
-      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+
+      # 4) protocolo de seguridad para cada listener
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    volumes:
+      - ./create-topics.sh:/docker-entrypoint-initdb.d/01-create-topics.sh:ro
     ports:
       - "9092:9092"
-      - "9093:9093"    # para el controller
     networks:
-      back:
-        aliases:
-          - kafka
+      - back
 
+  kafka-exporter:
+      image: danielqsj/kafka-exporter:latest
+      environment:
+        # Le indicas al exporter dónde está tu broker
+        - KAFKA_BROKERS=kafka:9092
+        # (Opcional) Nivel de log: debug, info, warn, error
+        - LOG_LEVEL=info
+        # (Opcional) Polling interval en segundos (default: 30s)
+        - POLL_INTERVAL=30
+      ports:
+        - "9308:9308"     # Exponemos el puerto 9308 para Prometheus
+      networks:
+        - back
+      deploy:
+        replicas: 1
+        restart_policy:
+          condition: on-failure
+
+  streams-app:
+    image: streaming-app:latest
+    environment:
+      - APPLICATION_ID=streaming-app
+      - BOOTSTRAP_SERVERS=kafka:9092
+    depends_on:
+      - kafka
+    networks:
+      - back
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
 
   ## 3) Base de datos MySQL
   db:
@@ -148,8 +181,6 @@ services:
     image: prom/prometheus:latest
     depends_on:
       - haproxy
-      - spark-master
-      - spark-worker
     ports:
       - "9090:9090"
     volumes:
@@ -191,44 +222,6 @@ services:
       replicas: 2
       restart_policy:
         condition: on-failure
-    networks:
-      - back
-
-  ## 9) Spark Master
-  spark-master:
-    image: bitnami/spark:3.3.2
-    environment:
-      - SPARK_MODE=master
-      - SPARK_MASTER_HOST=0.0.0.0      # <-- bind a todas las interfaces
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8080
-    networks:
-      - back
-
-  spark-worker:
-    image: bitnami/spark:3.3.2
-    depends_on:
-      - spark-master
-    environment:
-      - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
-    networks:
-      - back
-
-  spark-job:
-    image: bitnami/spark:3.3.2
-    depends_on:
-      - spark-master
-      - spark-worker
-    environment:
-      - SPARK_MODE=submit
-      - SPARK_MASTER_URL=spark://spark-master:7077
-    volumes:
-      - ./spark/streaming_job.py:/opt/app/streaming_job.py:ro
-    command: >
-      bash -lc "exec /opt/bitnami/spark/bin/spark-submit \
-        --master $SPARK_MASTER_URL \
-        /opt/app/streaming_job.py"
     networks:
       - back
 

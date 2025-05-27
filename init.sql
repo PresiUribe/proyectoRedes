@@ -9,12 +9,12 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nombre VARCHAR(20) NOT NULL,
   email VARCHAR(30) NOT NULL,
   usuario VARCHAR(10) NOT NULL,
-  password VARCHAR(15) NOT NULL,
+  password VARCHAR(200) NOT NULL,
   tipo ENUM('huesped','admin') NOT NULL,
   tipo_tarjeta ENUM('debito','credito') NOT NULL,
-  numero_tarjeta CHAR(16) NOT NULL,
-  cvc CHAR(3) NOT NULL,
-  fecha_expiracion CHAR(4) NOT NULL
+  numero_tarjeta CHAR(200) NOT NULL,
+  cvc CHAR(200) NOT NULL,
+  fecha_expiracion CHAR(200) NOT NULL
 );
 
 USE reservasMS;

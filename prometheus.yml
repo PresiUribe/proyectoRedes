@@ -21,17 +21,6 @@ scrape_configs:
     static_configs:
       - targets: ['haproxy-exporter:9101']
 
-  - job_name: 'spark-master'
-    metrics_path: /metrics/prometheus
+  - job_name: 'kafka-exporter'
     static_configs:
-      - targets: ['spark-master:8082']
-
-  - job_name: 'spark-worker'
-    metrics_path: /metrics/prometheus
-    static_configs:
-      - targets: ['spark-worker:8081']
-
-  - job_name: 'kafka'
-    static_configs:
-      - targets: ['kafka:9092']
-    # (opcional: usa kafka_exporter si lo tuvieras)
+      - targets: ['kafka-exporter:9308']

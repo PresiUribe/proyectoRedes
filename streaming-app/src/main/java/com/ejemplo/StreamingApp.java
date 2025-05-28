@@ -14,11 +14,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 
-
 public class StreamingApp {
     public static void main(String[] args) {
-        final String pagosTopic    = "pagos";
-        final String reservasTopic = "reservas";
+        final String pagosTopic    = "pagos-eventos";
+        final String reservasTopic = "fechas-eventos";
         final String avgTopic      = "avg-precio-por-fecha";
         final String cntTopic      = "conteo-reservas-por-fecha";
 
@@ -33,68 +32,70 @@ public class StreamingApp {
         DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                                                  .withZone(ZoneId.of("UTC"));
 
-        // 1) Precio promedio por fecha
-        KStream<String,String> pagos = builder.stream(pagosTopic);
+        // 1) Promedio de pagos por fecha
+        KStream<String, String> pagos = builder.stream(pagosTopic);
         KTable<String, Double> avgByDate = pagos
-          .map((key, v) -> {
-              String date;
-              double amount;
-              try {
-                  JsonNode j = mapper.readTree(v);
-                  long ts = Instant.parse(j.get("fecha_pago").asText()).toEpochMilli();
-                  date = fmt.format(Instant.ofEpochMilli(ts));
-                  amount = j.get("monto").asDouble();
-              } catch (Exception e) {
-                  throw new RuntimeException("Error parsing mensaje de pagos", e);
-              }
-              return KeyValue.pair(date, amount);
-          })
-          .groupByKey(Grouped.with(Serdes.String(), Serdes.Double()))
-  .aggregate(
-    () -> new double[]{0.0, 0.0},                    // acumulador [suma, conteo]
-    (date, amt, agg) -> new double[]{ agg[0] + amt, agg[1] + 1 },
-    Materialized
-      .<String, double[], KeyValueStore<Bytes, byte[]>>as("avg-store")  // nombre del state store
-      .withKeySerde(Serdes.String())
-      .withValueSerde(Serdes.serdeFrom(new ArraySerializer(), new ArrayDeserializer()))
-  )
-  .mapValues(arr -> arr[1] == 0.0 ? 0.0 : arr[0] / arr[1]);
-
+            .map((key, value) -> {
+                try {
+                    JsonNode j = mapper.readTree(value);
+                    // Extrae fecha del timestamp del evento
+                    String date = fmt.format(Instant.parse(j.get("timestamp").asText()));
+                    double amount = j.get("monto").asDouble();
+                    return KeyValue.pair(date, amount);
+                } catch (Exception e) {
+                    throw new RuntimeException("Error parsing mensaje de pagos", e);
+                }
+            })
+            .groupByKey(Grouped.with(Serdes.String(), Serdes.Double()))
+            .aggregate(
+                () -> new double[]{0.0, 0.0},                   // [suma, conteo]
+                (date, amt, agg) -> new double[]{agg[0] + amt, agg[1] + 1},
+                Materialized
+                  .<String, double[], KeyValueStore<Bytes, byte[]>>as("avg-store")
+                  .withKeySerde(Serdes.String())
+                  .withValueSerde(Serdes.serdeFrom(new ArraySerializer(), new ArrayDeserializer()))
+            )
+            .mapValues(arr -> arr[1] == 0.0 ? 0.0 : arr[0] / arr[1]);
 
         avgByDate.toStream()
                  .mapValues(Object::toString)
                  .to(avgTopic, Produced.with(Serdes.String(), Serdes.String()));
 
         // 2) Conteo de reservas por fecha
-        KStream<String,String> reservas = builder.stream(reservasTopic);
+        KStream<String, String> reservas = builder.stream(reservasTopic);
         KTable<String, Long> cntByDate = reservas
-          .map((key, v) -> {
-              String date;
-              try {
-                  JsonNode j = mapper.readTree(v);
-                  long ts = Instant.parse(j.get("fecha_reserva").asText()).toEpochMilli();
-                  date = fmt.format(Instant.ofEpochMilli(ts));
-              } catch (Exception e) {
-                  throw new RuntimeException("Error parsing mensaje de reservas", e);
-              }
-              return KeyValue.pair(date, date);
-          })
-          .groupByKey(Grouped.with(Serdes.String(), Serdes.String()))
-          .count();
+            .map((key, value) -> {
+                try {
+                    JsonNode j = mapper.readTree(value);
+                    // Extrae la fecha elegida directamente
+                    String date = j.get("fecha_elegida").asText();
+                    return KeyValue.pair(date, date);
+                } catch (Exception e) {
+                    throw new RuntimeException("Error parsing mensaje de reservas", e);
+                }
+            })
+            .groupByKey(Grouped.with(Serdes.String(), Serdes.String()))
+            .count(Materialized
+                .<String, Long, KeyValueStore<Bytes, byte[]>>as("cnt-store")
+                .withKeySerde(Serdes.String())
+                .withValueSerde(Serdes.Long())
+            );
 
         cntByDate.toStream()
                   .mapValues(Object::toString)
                   .to(cntTopic, Produced.with(Serdes.String(), Serdes.String()));
 
-        // 3) Arrancar el motor
+        // 3) Arrancar el motor de Streams
         KafkaStreams streams = new KafkaStreams(builder.build(), props);
         streams.start();
         Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+
+        // Mantiene la app activa
         CountDownLatch latch = new CountDownLatch(1);
-try {
-  latch.await();
-} catch (InterruptedException e) {
-  streams.close();
-}
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            streams.close();
+        }
     }
 }

@@ -3,7 +3,7 @@ const axios = require('axios');
 const router = Router();
 const reservasModel = require('../models/reservasModels');
 const USERS_BASE = process.env.USERS_URL || 'http://usuario_ms:3000';
-
+const producer = require('../kafka/producer');
 
 
 // Esta ruta se debe declarar ANTES de la ruta genérica
@@ -56,26 +56,47 @@ router.put('/reservas/estado/:propId', async (req, res) => {
  * 2. Si la validación es correcta, se crea la reserva.
  */
 router.post('/reservas', async (req, res) => {
-    try {
-        const { usuario_id, propiedad_id, fecha_reserva, estado } = req.body;
+  try {
+    const { usuario_id, propiedad_id, fecha_reserva, estado } = req.body;
 
-        // 1. Validar usuario mediante llamada REST al microservicio de Usuarios
-        const usuarioResponse = await axios.get(`${USERS_BASE}/usuarios/${usuario_id}`);
-        const usuario = usuarioResponse.data;
-        if (!usuario || usuario.tipo !== 'huesped') {
-            return res.status(400).json({ message: "Usuario inválido o no es un huésped" });
-        }
-
-        // 2. Crear la reserva en la base de datos
-        const result = await reservasModel.crearReserva(usuario_id, propiedad_id, fecha_reserva, estado);
-        res.status(201).json({
-            message: "Reserva creada",
-            reserva_id: result.insertId
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).send("Error al crear la reserva");
+    // 1. Validar usuario mediante llamada REST al microservicio de Usuarios
+    const usuarioResponse = await axios.get(`${USERS_BASE}/usuarios/${usuario_id}`);
+    const usuario = usuarioResponse.data;
+    if (!usuario || usuario.tipo !== 'huesped') {
+      return res.status(400).json({ message: "Usuario inválido o no es un huésped" });
     }
+
+    // 2. Crear la reserva en la base de datos
+    const result = await reservasModel.crearReserva(usuario_id, propiedad_id, fecha_reserva, estado);
+    const reservaId = result.insertId || result.id;
+
+    // 3. Publicar evento de fecha en Kafka
+    try {
+      await producer.send({
+        topic: 'fechas-eventos',
+        messages: [{
+          value: JSON.stringify({
+            reserva_id: reservaId,
+            fecha_elegida: fecha_reserva,
+            timestamp: new Date().toISOString()
+          })
+        }]
+      });
+    } catch (kErr) {
+      console.error('Error enviando evento de fecha a Kafka:', kErr);
+      // No detenemos el flujo: la reserva ya está creada
+    }
+
+    // 4. Responder al cliente
+    res.status(201).json({
+      message: "Reserva creada",
+      reserva_id: reservaId
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al crear la reserva");
+  }
 });
 
 /**

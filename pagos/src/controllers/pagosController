@@ -4,7 +4,10 @@ const router = Router();
 const pagosModel = require('../models/pagosModel');
 const USERS_BASE = process.env.USERS_URL || 'http://usuario_ms:3000';
 const RESERVAS_BASE = process.env.RESERVAS_URL || 'http://reservas_ms:3000';
-
+const { Kafka } = require('kafkajs');
+const kafka = new Kafka({ clientId: 'pagos-service', brokers: [process.env.KAFKA_BROKER] });
+const producer = kafka.producer();
+await producer.connect();
 // pagosController.js
 router.get('/pagos/pending', async (req, res) => {
   try {
@@ -55,48 +58,53 @@ router.get('/pagos/pending', async (req, res) => {
  */
 
 router.post('/pagos', async (req, res) => {
+  try {
+    const { reserva_id, monto, estado } = req.body;
+
+    // 1. Consultar la reserva
+    const { data: reserva } = await axios.get(`${RESERVAS_BASE}/reservas/${reserva_id}`);
+    if (!reserva) return res.status(404).json({ message: "Reserva no encontrada" });
+
+    // 2. Consultar usuario
+    const { data: usuario } = await axios.get(`${USERS_BASE}/usuarios/${reserva.usuario_id}`);
+    if (!usuario) return res.status(404).json({ message: "Usuario no encontrado" });
+
+    const metodo_pago = usuario.tipo_tarjeta;
+
+    // 3. Crear el pago
+    const nuevoPago = await pagosModel.crearPago(reserva_id, metodo_pago, monto, estado);
+
+    // 4. Actualizar reserva
+    await axios.put(`${RESERVAS_BASE}/reservas/${reserva_id}`, { Estado: 'pendiente' });
+
+    // 5. Enviar evento a Kafka
     try {
-        const { reserva_id, monto, estado } = req.body;
-
-        // 1. Consultar la reserva en el microservicio de Reservas
-        const reservaResponse = await axios.get(`${RESERVAS_BASE}/reservas/${reserva_id}`);
-        const reserva = reservaResponse.data;
-        if (!reserva) {
-            return res.status(404).json({ message: "Reserva no encontrada" });
-        }
-
-        // Se espera que la reserva contenga 'usuario_id'
-        const usuario_id = reserva.usuario_id;
-        if (!usuario_id) {
-            return res.status(400).json({ message: "La reserva no contiene información de usuario" });
-        }
-
-        // 2. Consultar la información del usuario en el microservicio de Usuarios
-        const usuarioResponse = await axios.get(`${USERS_BASE}/usuarios/${usuario_id}`);
-        const usuario = usuarioResponse.data;
-        if (!usuario) {
-            return res.status(404).json({ message: "Usuario no encontrado" });
-        }
-
-        // Extraer el método de pago del usuario (por ejemplo, 'tipo_tarjeta')
-        const metodo_pago = usuario.tipo_tarjeta;
-
-        // 3. Crear el pago en la base de datos de Pagos
-        const result = await pagosModel.crearPago(reserva_id, metodo_pago, monto, estado);
-
-        // 4. Actualizar el estado de la reserva a "pendiente"
-        await axios.put(`${RESERVAS_BASE}/reservas/${reserva_id}`, { estado: 'pendiente' });
-
-        res.status(201).json({
-            message: "Pago procesado y reserva actualizada a pendiente",
-            pago_id: result.insertId
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).send("Error al procesar el pago");
+      await producer.send({
+        topic: 'pagos-eventos',
+        messages: [{
+          value: JSON.stringify({
+            pago_id: nuevoPago.insertId || nuevoPago.id,
+            monto,
+            timestamp: new Date().toISOString()
+          })
+        }]
+      });
+    } catch (kErr) {
+      console.error('Error enviando a Kafka:', kErr);
+      // No detiene la respuesta al cliente
     }
-});
 
+    // 6. Responder al cliente
+    res.status(201).json({
+      message: "Pago procesado y reserva actualizada a pendiente",
+      pago: nuevoPago
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Error al procesar el pago");
+  }
+});
 
 /**
  * GET /pagos/:id

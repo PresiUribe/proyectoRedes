@@ -8,6 +8,7 @@ const pool = mysql.createPool({
     database: process.env.DB_NAME || 'pagosMS'
 });
 
+
 // Función para crear un nuevo pago
 async function crearPago(reserva_id, metodo_pago, monto, estado) {
     const [result] = await pool.query(
